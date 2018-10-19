@@ -54,6 +54,8 @@ for epoch in range(num_epochs):
 	# Add Task:
 	sq1 = sq0.add_input(embeddings[task+task_offset])
 
+	
+
 
 
 print(get_params())
