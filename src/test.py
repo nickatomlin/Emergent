@@ -5,7 +5,7 @@ import torch.autograd as autograd
 import sys
 
 
-class QBot(Bot):
+class QBot(nn.Module):
 	def __init__(self, params):
 		# Absorb parameters into self:
 		for attr in params: setattr(self, attr, params[attr])
@@ -48,12 +48,56 @@ class QBot(Bot):
 
 
 	def reset_state(self):
-		self.hidden_state = torch.Tensor(self.batch_size, self.hidden_dim);
-        self.hidden_state.fill_(0.0);
-        self.hidden_state = Variable(self.hidden_state);
-        self.cell_state = torch.Tensor(self.batch_size, self.hidden_dim);
-        self.cell_state.fill_(0.0);
-        self.cell_state = Variable(self.cell_state);	
+		self.hidden_state = torch.Tensor(self.batch_size, self.hidden_dim)
+        self.hidden_state.fill_(0.0)
+        self.hidden_state = Variable(self.hidden_state)
+        self.cell_state = torch.Tensor(self.batch_size, self.hidden_dim)
+        self.cell_state.fill_(0.0)
+        self.cell_state = Variable(self.cell_state)
+
+
+    def reinforce(self, rewards):
+        for action in self.actions: action.reinforce(rewards)
+
+
+    def performBackward(self):
+        autograd.backward(self.actions, [None for _ in self.actions], retain_variables=True)
+
+
+    def freeze(self):
+        for p in self.parameters(): p.requires_grad = False
+    def unfreeze(self):
+        for p in self.parameters(): p.requires_grad = True
+
+
+
+class ABot(nn.Module):
+	def __init__(self, params):
+		# Absorb parameters into self:
+		for attr in params: setattr(self, attr, params[attr])
+
+		# Parameters:
+		self.actions = []
+
+		# Task Encoder:
+		
+
+		# Listener:
+		input_dim = self.abot_vocab + self.qbot_vocab
+		self.embeddings = nn.Embedding(input_dim, self.embed_dim)
+
+		self.hidden_state = torch.Tensor()
+		self.cell_state = torch.Tensor()
+		self.rnn = nn.LSTMCell(self.embed_dim, self.hidden_dim)
+
+		# Speaker:
+		self.output = nn.Linear(self.hidden_dim, self.qbot_vocab)
+		self.softmax = nn.Softmax()
+
+		# Prediction
+		self.num_guesses = self.num_atts ** self.num_types
+		self.predict_rnn = nn.LSTMCell(self.embed_dim, self.hidden_dim)
+		self.predict_net = nn.Linear(self.hidden_dim, self.num_guesses)
 
 
 
