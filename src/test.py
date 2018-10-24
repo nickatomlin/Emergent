@@ -60,41 +60,41 @@ class QBot(nn.Module):
 		for _ in range(self.num_tokens):
 			task_embeddings = self.embeddings(tasks)
 			self.hState, self.cState = self.predict_rnn(task_embeddings, (self.hidden_state, self.cell_state))
-        	guess_distribution = self.softmax(self.predict_net(self.hidden_state))
+			guess_distribution = self.softmax(self.predict_net(self.hidden_state))
 
-        	if self.eval_mode:
-        		guess = guess_distribution.max(1)
-        	else:
-        		guess = guess_distribution.multinomial()
-        		self.actions.append(guess)
+			if self.eval_mode:
+				guess = guess_distribution.max(1)
+			else:
+				guess = guess_distribution.multinomial()
+				self.actions.append(guess)
 
-        	guesses.append(guess)
-        	guesses_distribution.append(guess_distribution)
+			guesses.append(guess)
+			guesses_distribution.append(guess_distribution)
 
-        return guesses, guesses_distribution
+		return guesses, guesses_distribution
 
 
 	def reset_state(self):
 		self.hidden_state = torch.Tensor(self.batch_size, self.hidden_dim)
-        self.hidden_state.fill_(0.0)
-        self.hidden_state = Variable(self.hidden_state)
-        self.cell_state = torch.Tensor(self.batch_size, self.hidden_dim)
-        self.cell_state.fill_(0.0)
-        self.cell_state = Variable(self.cell_state)
+		self.hidden_state.fill_(0.0)
+		self.hidden_state = Variable(self.hidden_state)
+		self.cell_state = torch.Tensor(self.batch_size, self.hidden_dim)
+		self.cell_state.fill_(0.0)
+		self.cell_state = Variable(self.cell_state)
 
 
-    def reinforce(self, rewards):
-        for action in self.actions: action.reinforce(rewards)
+	def reinforce(self, rewards):
+		for action in self.actions: action.reinforce(rewards)
 
 
-    def performBackward(self):
-        autograd.backward(self.actions, [None for _ in self.actions], retain_variables=True)
+	def performBackward(self):
+		autograd.backward(self.actions, [None for _ in self.actions], retain_variables=True)
 
 
-    def freeze(self):
-        for p in self.parameters(): p.requires_grad = False
-    def unfreeze(self):
-        for p in self.parameters(): p.requires_grad = True
+	def freeze(self):
+		for p in self.parameters(): p.requires_grad = False
+	def unfreeze(self):
+		for p in self.parameters(): p.requires_grad = True
 
 
 
@@ -150,25 +150,25 @@ class ABot(nn.Module):
 
 	def reset_state(self):
 		self.hidden_state = torch.Tensor(self.batch_size, self.hidden_dim)
-        self.hidden_state.fill_(0.0)
-        self.hidden_state = Variable(self.hidden_state)
-        self.cell_state = torch.Tensor(self.batch_size, self.hidden_dim)
-        self.cell_state.fill_(0.0)
-        self.cell_state = Variable(self.cell_state)
+		self.hidden_state.fill_(0.0)
+		self.hidden_state = Variable(self.hidden_state)
+		self.cell_state = torch.Tensor(self.batch_size, self.hidden_dim)
+		self.cell_state.fill_(0.0)
+		self.cell_state = Variable(self.cell_state)
 
 
-    def reinforce(self, rewards):
-        for action in self.actions: action.reinforce(rewards)
+	def reinforce(self, rewards):
+		for action in self.actions: action.reinforce(rewards)
 
 
-    def performBackward(self):
-        autograd.backward(self.actions, [None for _ in self.actions], retain_variables=True)
+	def performBackward(self):
+		autograd.backward(self.actions, [None for _ in self.actions], retain_variables=True)
 
 
-    def freeze(self):
-        for p in self.parameters(): p.requires_grad = False
-    def unfreeze(self):
-        for p in self.parameters(): p.requires_grad = True
+	def freeze(self):
+		for p in self.parameters(): p.requires_grad = False
+	def unfreeze(self):
+		for p in self.parameters(): p.requires_grad = True
 
 
 
@@ -188,3 +188,5 @@ if __name__ == '__main__':
 		'eval_mode': False
 	}
 	print("Testing...")
+	qbot = QBot(params)
+	abot = ABot(params)
