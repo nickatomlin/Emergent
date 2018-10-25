@@ -171,6 +171,29 @@ class ABot(nn.Module):
 		for p in self.parameters(): p.requires_grad = True
 
 
+#####################################
+
+
+class Trainer(nn.Module):
+	def __init__(self, params):
+		super(Trainer, self).__init__()
+		for attr in params: setattr(self, attr, params[attr])
+
+		attributes = ['colors', 'shapes', 'styles']
+		props = {'colors': ['red', 'green', 'blue', 'purple'],
+                'shapes': ['square', 'triangle', 'circle', 'star'],
+                'styles': ['dotted', 'solid', 'filled', 'dashed']}
+
+	def get_batch(self):
+		num_targets = self.num_atts ** self.num_types
+		tasks = torch.LongTensor(self.batch_size).random_(0, self.num_tasks-1)
+		targets = torch.LongTensor(self.batch_size).random_(0, num_targets-1)
+
+
+
+
+
+#####################################
 
 
 if __name__ == '__main__':
