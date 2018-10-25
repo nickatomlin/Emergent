@@ -3,6 +3,8 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.autograd as autograd
 import sys
+from functools import reduce
+from itertools import product
 
 class QBot(nn.Module):
 	def __init__(self, params):
@@ -179,17 +181,38 @@ class Trainer(nn.Module):
 		super(Trainer, self).__init__()
 		for attr in params: setattr(self, attr, params[attr])
 
-		attributes = ['colors', 'shapes', 'styles']
-		props = {'colors': ['red', 'green', 'blue', 'purple'],
-                'shapes': ['square', 'triangle', 'circle', 'star'],
-                'styles': ['dotted', 'solid', 'filled', 'dashed']}
+		self.task_list = [[0, 1], [1, 0], [0, 2], [2, 0], [1, 2], [2, 1]]
+		self.task_map = torch.LongTensor(self.task_list)
+
+		self.types = ['colors', 'shapes', 'styles']
+		self.props = {'colors': ['red', 'green', 'blue', 'purple'],
+				'shapes': ['square', 'triangle', 'circle', 'star'],
+				'styles': ['dotted', 'solid', 'filled', 'dashed']}
+		attrList = [self.props[att_type] for att_type in self.types];
+		self.targets = list(product(*attrList))
+		self.num_targets = len(self.targets)
+
+
+		attrVals = reduce(lambda x, y: x+y, [self.props[ii] for ii in self.types])
+		self.attrVocab = {value:ii for ii, value in enumerate(attrVals)}
+		self.invAttrVocab = {index:attr for attr, index in self.attrVocab.items()}
+
+		self.data = torch.LongTensor(self.num_targets, self.num_types)
+		for i, target in enumerate(self.targets):
+			self.data[i] = torch.LongTensor([self.attrVocab[att] for att in target])
+
 
 	def get_batch(self):
-		num_targets = self.num_atts ** self.num_types
 		tasks = torch.LongTensor(self.batch_size).random_(0, self.num_tasks-1)
-		targets = torch.LongTensor(self.batch_size).random_(0, num_targets-1)
+		tasks = self.task_map[tasks]
 
+		targets = torch.LongTensor(self.batch_size).random_(0, self.num_targets-1)
+		batch = self.data[targets]
 
+		labels = batch.gather(1, tasks)
+		print(labels)
+
+		return batch, tasks, labels
 
 
 
@@ -213,3 +236,5 @@ if __name__ == '__main__':
 	print("Testing...")
 	qbot = QBot(params)
 	abot = ABot(params)
+	trainer = Trainer(params)
+	trainer.get_batch()
