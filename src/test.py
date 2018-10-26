@@ -54,7 +54,7 @@ class QBot(nn.Module):
 		return action.squeeze(1)
 
 
-	def predict(self, batch):
+	def predict(self, tasks):
 		guesses = []
 		guesses_distribution = []
 
@@ -241,8 +241,9 @@ class Trainer(nn.Module):
 			self.abot.listen(abot_output + self.qbot_vocab, target_embeddings)
 
 		# Prediction:
-		
-				
+		self.qbot.listen(abot_output)
+		self.guess, self.guess_distribution = self.qbot.predict(tasks)
+
 
 	def backward(self, optimizer, labels):
 		pass
