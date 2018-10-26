@@ -38,9 +38,9 @@ class QBot(nn.Module):
 		self.hidden_state, self.cell_state = self.rnn(embedded_token, (self.hidden_state, self.cell_state))
 
 
-	def task_embed(self, task_batch):
+	def embed_task(self, task_batch):
 		offset = self.abot_vocab + self.qbot_vocab
-		self.listen(task_batch + offset)
+		return (task_batch + offset)
 
 
 	def speak(self):
@@ -49,7 +49,7 @@ class QBot(nn.Module):
 			_, action = logits.max(1)
 			action = action.unsqueeze(1)
 		else:
-			actions = outDistr.multinomial()
+			action = logits.multinomial(1)
 			self.actions.append(action)
 		return action.squeeze(1)
 
@@ -67,7 +67,7 @@ class QBot(nn.Module):
 			if self.eval_mode:
 				guess = guess_distribution.max(1)
 			else:
-				guess = guess_distribution.multinomial()
+				guess = guess_distribution.multinomial(1)
 				self.actions.append(guess)
 
 			guesses.append(guess)
@@ -76,11 +76,11 @@ class QBot(nn.Module):
 		return guesses, guesses_distribution
 
 
-	def reset_state(self):
-		self.hidden_state = torch.Tensor(self.batch_size, self.hidden_dim)
+	def reset_state(self, batch_size):
+		self.hidden_state = torch.Tensor(batch_size, self.hidden_dim)
 		self.hidden_state.fill_(0.0)
 		self.hidden_state = Variable(self.hidden_state)
-		self.cell_state = torch.Tensor(self.batch_size, self.hidden_dim)
+		self.cell_state = torch.Tensor(batch_size, self.hidden_dim)
 		self.cell_state.fill_(0.0)
 		self.cell_state = Variable(self.cell_state)
 
@@ -111,7 +111,7 @@ class ABot(nn.Module):
 
 		# Task Encoder:
 		total_attributes = self.num_atts*self.num_types
-		self.target_embedding = nn.Embedding(self.num_atts, self.target_embed_dim)
+		self.target_embedding = nn.Embedding(total_attributes, self.target_embed_dim)
 
 		# Listener:
 		input_dim = self.abot_vocab + self.qbot_vocab
@@ -121,7 +121,7 @@ class ABot(nn.Module):
 		self.cell_state = torch.Tensor()
 
 		# Concatenate task embeddings and listener dim:
-		listener_dim = total_attributes*self.target_embed_dim + self.embed_dim
+		listener_dim = self.num_types*self.target_embed_dim + self.embed_dim
 		self.rnn = nn.LSTMCell(listener_dim, self.hidden_dim)
 
 		# Speaker:
@@ -131,11 +131,13 @@ class ABot(nn.Module):
 
 	def embed_target(self, target_batch):
 		target_embeddings = self.target_embedding(target_batch)
-		return torch.cat(target_embeddings.transpose(0, 1), 1)
+		target_embeddings = target_embeddings.transpose(0, 1)
+		return torch.cat(tuple(target_embeddings), 1)
 
 
-	def listen(self, token):
+	def listen(self, token, target_embeddings):
 		embedded_token = self.embeddings(token)
+		embedded_token = torch.cat((embedded_token, target_embeddings), 1)
 		self.hidden_state, self.cell_state = self.rnn(embedded_token, (self.hidden_state, self.cell_state))
 
 
@@ -145,16 +147,16 @@ class ABot(nn.Module):
 			_, action = logits.max(1)
 			action = action.unsqueeze(1)
 		else:
-			actions = outDistr.multinomial()
+			action = logits.multinomial(1)
 			self.actions.append(action)
 		return action.squeeze(1)
 
 
-	def reset_state(self):
-		self.hidden_state = torch.Tensor(self.batch_size, self.hidden_dim)
+	def reset_state(self, batch_size):
+		self.hidden_state = torch.Tensor(batch_size, self.hidden_dim)
 		self.hidden_state.fill_(0.0)
 		self.hidden_state = Variable(self.hidden_state)
-		self.cell_state = torch.Tensor(self.batch_size, self.hidden_dim)
+		self.cell_state = torch.Tensor(batch_size, self.hidden_dim)
 		self.cell_state.fill_(0.0)
 		self.cell_state = Variable(self.cell_state)
 
@@ -188,7 +190,7 @@ class Trainer(nn.Module):
 		self.props = {'colors': ['red', 'green', 'blue', 'purple'],
 				'shapes': ['square', 'triangle', 'circle', 'star'],
 				'styles': ['dotted', 'solid', 'filled', 'dashed']}
-		attrList = [self.props[att_type] for att_type in self.types];
+		attrList = [self.props[att_type] for att_type in self.types]
 		self.targets = list(product(*attrList))
 		self.num_targets = len(self.targets)
 
@@ -201,18 +203,55 @@ class Trainer(nn.Module):
 		for i, target in enumerate(self.targets):
 			self.data[i] = torch.LongTensor([self.attrVocab[att] for att in target])
 
+		self.abot = ABot(params)
+		self.qbot = QBot(params)
+
 
 	def get_batch(self):
 		tasks = torch.LongTensor(self.batch_size).random_(0, self.num_tasks-1)
-		tasks = self.task_map[tasks]
+		task_list = self.task_map[tasks]
 
 		targets = torch.LongTensor(self.batch_size).random_(0, self.num_targets-1)
-		batch = self.data[targets]
+		targets = self.data[targets]
 
-		labels = batch.gather(1, tasks)
-		print(labels)
+		labels = targets.gather(1, task_list)
 
-		return batch, tasks, labels
+		return targets, tasks, labels
+
+
+	def forward(self, targets, tasks):
+		batch_size = targets.size(0)
+		self.qbot.reset_state(batch_size)
+		self.abot.reset_state(batch_size)
+
+		task_embeddings = self.qbot.embed_task(tasks)
+		target_embeddings = self.abot.embed_target(targets)
+
+		qbot_input = task_embeddings
+
+		for round in range(self.num_rounds):
+			self.qbot.listen(qbot_input)
+			qbot_output = self.qbot.speak()
+			qbot_output = qbot_output.detach()
+			self.qbot.listen(qbot_output + self.abot_vocab)
+
+			self.abot.listen(qbot_output, target_embeddings)
+			abot_output = self.abot.speak()
+			abot_output = abot_output.detach()
+			self.abot.listen(abot_output + self.qbot_vocab, target_embeddings)
+
+		# Prediction:
+		
+				
+
+	def backward(self, optimizer, labels):
+		pass
+
+
+	def train(self):
+		for epoch in range(self.num_epochs):
+			targets, tasks, labels = self.get_batch()
+			self.forward(targets, tasks)
 
 
 
@@ -224,6 +263,7 @@ if __name__ == '__main__':
 		'num_types': 3,
 		'num_atts': 4,
 		'num_tokens': 2,
+		'num_rounds': 2,
 		'num_tasks': 6,
 		'abot_vocab': 4,
 		'qbot_vocab': 3,
@@ -231,10 +271,9 @@ if __name__ == '__main__':
 		'target_embed_dim': 20,
 		'hidden_dim': 100,
 		'batch_size': 1000,
+		'num_epochs': 100,
 		'eval_mode': False
 	}
 	print("Testing...")
-	qbot = QBot(params)
-	abot = ABot(params)
 	trainer = Trainer(params)
-	trainer.get_batch()
+	trainer.train()
